@@ -5,6 +5,8 @@ from fastapi import HTTPException
 
 
 from routes.projects import router as projects_router
+from routes.profiles import router as profiles_router
+from routes.technologies import router as technologies_router
 
 app = FastAPI(
     title="Portfolio API",
@@ -13,7 +15,8 @@ app = FastAPI(
 )
 
 app.include_router(projects_router)
-
+app.include_router(profiles_router)
+app.include_router(technologies_router)
 
 @app.exception_handler(HTTPException)
 async def tratar_http_exception(request: Request, exc: HTTPException):

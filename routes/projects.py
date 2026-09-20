@@ -2,6 +2,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from database import get_connection
 
+from dtos.projectDto import ProjectDto
+from dtos.projectResponseDto import ProjectResponseDto
+from repositories import projectRepository
+
 class Feedback(BaseModel):
     nota: int
     comentario: str
@@ -11,58 +15,53 @@ router = APIRouter(
     tags=["Projetos"]
 )
 
-
-@router.get("")
+@router.get("", response_model=list[ProjectResponseDto])
 def listar_projetos(
     tecnologia: str | None = None,
     pagina: int = 1,
     limite: int = 10
 ):
-    conexao = get_connection()
-    cursor = conexao.cursor()
-
     if pagina < 1:
         pagina = 1
 
     if limite < 1:
         limite = 10
 
-    deslocamento = (pagina - 1) * limite
+    resultados = projectRepository.listar(
+        tecnologia,
+        pagina,
+        limite
+    )
 
-    if tecnologia:
-        cursor.execute("""
-            SELECT id, nome, tecnologia, media_avaliacao, upvotes
-            FROM projects
-            WHERE LOWER(tecnologia) = LOWER(%s)
-            ORDER BY id
-            LIMIT %s OFFSET %s
-        """, (tecnologia, limite, deslocamento))
-    else:
-        cursor.execute("""
-            SELECT id, nome, tecnologia, media_avaliacao, upvotes
-            FROM projects
-            ORDER BY id
-            LIMIT %s OFFSET %s
-        """, (limite, deslocamento))
+    return [
+        ProjectResponseDto(
+            id=projeto[0],
+            nome=projeto[1],
+            profile_id=projeto[2],
+            media_avaliacao=float(projeto[3]),
+            upvotes=projeto[4],
+            tecnologia_ids=projeto[5]
+        )
+        for projeto in resultados
+    ]
 
-    resultados = cursor.fetchall()
+@router.post("", response_model=ProjectResponseDto)
+def criar_projeto(project: ProjectDto):
 
-    cursor.close()
-    conexao.close()
+    resultado = projectRepository.criar(
+        project.nome,
+        project.profile_id,
+        project.tecnologia_ids
+    )
 
-    projetos = []
-
-    for projeto in resultados:
-        projetos.append({
-            "id": projeto[0],
-            "nome": projeto[1],
-            "tecnologia": projeto[2],
-            "media_avaliacao": float(projeto[3]),
-            "upvotes": projeto[4]
-        })
-
-    return projetos
-
+    return ProjectResponseDto(
+        id=resultado[0],
+        nome=resultado[1],
+        profile_id=resultado[2],
+        media_avaliacao=float(resultado[3]),
+        upvotes=resultado[4],
+        tecnologia_ids=project.tecnologia_ids
+    )
 @router.post("/{id}/feedbacks")
 def adicionar_feedback(id: int, feedback: Feedback):
     if feedback.nota < 1 or feedback.nota > 5:
@@ -139,7 +138,7 @@ def dar_upvote(id: int):
         UPDATE projects
         SET upvotes = upvotes + 1
         WHERE id = %s
-        RETURNING id, nome, tecnologia, media_avaliacao, upvotes
+        RETURNING id, nome, profile_id, media_avaliacao, upvotes
     """, (id,))
 
     projeto = cursor.fetchone()
@@ -162,7 +161,7 @@ def dar_upvote(id: int):
         "mensagem": "Upvote registrado com sucesso.",
         "id": projeto[0],
         "nome": projeto[1],
-        "tecnologia": projeto[2],
+        "profile_id": projeto[2],
         "media_avaliacao": float(projeto[3]),
         "upvotes": projeto[4]
     }
